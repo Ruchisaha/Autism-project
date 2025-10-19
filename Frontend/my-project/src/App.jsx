@@ -48,7 +48,7 @@ function App() {
 
     setLoading(true)
     try {
-      const resp = await fetch('/analyze-ai', {
+      const resp = await fetch(`${import.meta.env.VITE_API_BASE_URL}/analyze-ai`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -69,7 +69,7 @@ function App() {
       // Save form data to Firebase after successful AI analysis
       try {
         console.log('Attempting to save to Firebase...')
-        const recordResp = await fetch('/records', {
+        const recordResp = await fetch(`${import.meta.env.VITE_API_BASE_URL}/records`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
