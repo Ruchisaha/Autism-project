@@ -5,10 +5,15 @@ export function ActionButtons({ loading, isFormComplete, setForm, setResult, set
       age: '',
       parentName: '',
       phoneNumber: '',
+      gender: '',
       eyeContact: '',
-      speechLevel: '',
+      communication: '',
+      speechPatterns: '',
       socialResponse: '',
       sensoryReactions: '',
+      photo: null,
+      photoPreview: null,
+      detectedEmotions: null,
     })
     setResult(null)
     setMessage(null)

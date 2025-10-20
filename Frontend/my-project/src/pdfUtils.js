@@ -20,11 +20,16 @@ export function generatePDF(form, result, provider) {
     pdf.setTextColor(255, 255, 255) // White text
     pdf.setFontSize(18)
     pdf.setFont('helvetica', 'bold')
-    pdf.text('Global Child Wellness Centre', centerX, 35, { align: 'center' })
+    pdf.text('Global Child Wellness Centre', centerX, 30, { align: 'center' })
     
     pdf.setFontSize(16)
     pdf.setFont('helvetica', 'bold')
-    pdf.text('AUTISM ASSESSMENT REPORT', centerX, 55, { align: 'center' })
+    pdf.text('AUTISM ASSESSMENT REPORT', centerX, 50, { align: 'center' })
+    
+    // Add date in header
+    pdf.setFontSize(10)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text('Date: ' + new Date().toLocaleDateString('en-GB'), pageWidth - margin, 25, { align: 'right' })
 
     y = 100 // Start content after header with proper gap
     pdf.setTextColor(0, 0, 0) // Black text for content
@@ -57,9 +62,25 @@ export function generatePDF(form, result, provider) {
     }
     y += 20
     
-    pdf.text('Date: ' + new Date().toLocaleDateString('en-GB'), leftColumn, y)
-    pdf.text('Provider: ' + (provider || 'AI Assessment'), rightColumn, y)
-    y += 30
+    pdf.text('Provider: ' + (provider || 'AI Assessment'), leftColumn, y)
+    y += 20
+    
+    // Add emotion detection summary if available
+    if (form.detectedEmotions) {
+      const topEmotion = Object.entries(form.detectedEmotions)
+        .sort((a, b) => b[1] - a[1])[0]
+      
+      if (topEmotion) {
+        const emotionText = `${topEmotion[0]} (${Math.round(topEmotion[1] * 100)}%)`
+        pdf.setFont('helvetica', 'bold')
+        pdf.text('Detected Emotion: ', leftColumn, y)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text(emotionText, rightColumn, y)
+        y += 20
+      }
+    }
+    
+    y += 10
 
     // Assessment Responses Section
     pdf.setFillColor(240, 248, 255) // Light blue background
@@ -149,19 +170,21 @@ export function generatePDF(form, result, provider) {
         
         // Show only first 2 activities to save space
         for (let i = 0; i < Math.min(result.activities.length, 2); i++) {
-          const activityTitle = pdf.splitTextToSize('Activity ' + (i + 1) + ': ' + result.activities[i].text, maxWidth - 30)
+          pdf.setFont('helvetica', 'bold')
+          const activityTitle = pdf.splitTextToSize((i + 1) + '. ' + result.activities[i].text, maxWidth - 30)
           pdf.text(activityTitle, leftColumn + 15, y)
+          pdf.setFont('helvetica', 'normal')
           y += activityTitle.length * 15 + 5
           
-          // Show only first 2 steps per activity
+          // Show steps with proper indentation
           if (result.activities[i].steps && result.activities[i].steps.length) {
-            for (let j = 0; j < Math.min(result.activities[i].steps.length, 2); j++) {
-              const stepText = pdf.splitTextToSize('  ' + (j + 1) + '. ' + result.activities[i].steps[j], maxWidth - 50)
+            for (let j = 0; j < Math.min(result.activities[i].steps.length, 3); j++) {
+              const stepText = pdf.splitTextToSize('   • ' + result.activities[i].steps[j], maxWidth - 60)
               pdf.text(stepText, leftColumn + 25, y)
-              y += stepText.length * 13 + 3
+              y += stepText.length * 12 + 4
             }
           }
-          y += 12
+          y += 8
         }
         
         // Add note if more activities exist
@@ -173,7 +196,7 @@ export function generatePDF(form, result, provider) {
       }
     }
 
-    // Professional Footer with proper spacing
+    // Professional Footer with proper left-right split
     pdf.setFillColor(47, 54, 95) // Dark blue background
     pdf.rect(0, pageHeight - 70, pageWidth, 70, 'F')
     
@@ -181,14 +204,13 @@ export function generatePDF(form, result, provider) {
     pdf.setFont('helvetica', 'normal')
     pdf.setTextColor(255, 255, 255) // White text
     
-    // Contact Information with proper margins - centered layout
+    // Left side - Contact Information
     pdf.text('Opening Hours: Mon - Sat (10.00AM-06.00PM)', margin + 15, pageHeight - 50)
     pdf.text('Address: 127 I-BLOCK, SARABHA NAGAR', margin + 15, pageHeight - 35)
     pdf.text('Phone: +919501032237, +917696730604', margin + 15, pageHeight - 20)
-    pdf.text('Website: https://globalchildwellness.com/', margin + 15, pageHeight - 5)
     
-    // Generated date on the right with proper margin
-    pdf.text('Report Generated: ' + new Date().toLocaleDateString('en-GB'), pageWidth - margin - 130, pageHeight - 35)
+    // Right side - Website only
+    pdf.text('Website: https://globalchildwellness.com/', pageWidth - margin - 15, pageHeight - 35, { align: 'right' })
 
     // Save with clean filename
     const safeName = (form.name || 'Patient').toString().replace(/[^a-z0-9_-]/gi, '_')

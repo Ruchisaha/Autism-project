@@ -13,11 +13,14 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@azure/cognitiveservices-face": "^5.0.0",
+    "@azure/ms-rest-js": "^2.7.0",
     "axios": "^1.12.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "firebase": "^12.4.0",
-    "firebase-admin": "^12.7.0"
+    "firebase-admin": "^12.7.0",
+    "multer": "^2.0.2"
   }
 }

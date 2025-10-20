@@ -45,6 +45,9 @@ app.use((req, res, next) => {
 
 app.use(express.json())
 
+// Note: File uploads and emotion detection are now handled client-side
+// using Face-API.js, so no multer or Azure Face API needed
+
 // Root route
 app.get('/', (req, res) => {
 	res.json({ 
@@ -102,16 +105,19 @@ app.post('/analyze', (req, res) => {
 	res.json({ summary, recommendation, received: { age, eyeContact, speechLevel, socialResponse, sensoryReactions } })
 })
 
+// Note: Emotion detection is now handled client-side using Face-API.js
+// No server-side endpoint needed for emotion detection
+
 // POST /analyze-ai
 // Accepts the same payload as /analyze but sends it to an AI model
 // Returns structured JSON: { focusAreas:[], therapyGoals:[...], activities:[...] }
 app.post('/analyze-ai', async (req, res) => {
-	const { name, age, parentName, phoneNumber, eyeContact, speechLevel, socialResponse, sensoryReactions } = req.body || {}
+	const { name, age, parentName, phoneNumber, eyeContact, communication, speechPatterns, socialResponse, sensoryReactions, detectedEmotions } = req.body || {}
 
 	// Log which provider will be used for this request (no secrets)
 	const requestProvider = detectProvider()
 	console.log('/analyze-ai incoming — provider:', requestProvider)
-	console.log('Request data:', { name, age, parentName, phoneNumber, eyeContact, speechLevel, socialResponse, sensoryReactions })
+	console.log('Request data:', { name, age, parentName, phoneNumber, eyeContact, communication, speechPatterns, socialResponse, sensoryReactions, detectedEmotions })
 
 	// basic validation
 	if (age === undefined || age === null) {
@@ -128,7 +134,18 @@ app.post('/analyze-ai', async (req, res) => {
 
 		const schemaInstruction = `Return a JSON object with the following fields exactly:\n- focusAreas: array of short strings (e.g. ["Social interaction", "Speech"])\n- therapyGoals: array of 3 objects {id: string, text: string} (three short therapy goals)\n- activities: array of 2 objects {id: string, text: string, steps?: string[]} (two simple activities)\nDo not include any other fields.`
 
-		const user = `Child data:\nage: ${age}\neyeContact: ${eyeContact}\nspeechLevel: ${speechLevel}\nsocialResponse: ${socialResponse}\nsensoryReactions: ${sensoryReactions}\n\n${schemaInstruction}\nPrompt: Based on this child's responses, give 3 short therapy goals and 2 activities that can help improvement.`
+		// Build user prompt with emotion data if available
+		let emotionText = ''
+		if (detectedEmotions) {
+			const topEmotions = Object.entries(detectedEmotions)
+				.sort((a, b) => b[1] - a[1])
+				.slice(0, 3)
+				.map(([emotion, confidence]) => `${emotion}: ${Math.round(confidence * 100)}%`)
+				.join(', ')
+			emotionText = `\nDetected emotions from photo: ${topEmotions}`
+		}
+
+		const user = `Child data:\nage: ${age}\neyeContact: ${eyeContact}\ncommunication: ${communication}\nspeechPatterns: ${speechPatterns}\nsocialResponse: ${socialResponse}\nsensoryReactions: ${sensoryReactions}${emotionText}\n\n${schemaInstruction}\nPrompt: Based on this child's responses and emotional state, give 3 short therapy goals and 2 activities that can help improvement.`
 
 		// Check if any API key is available
 		if (!geminiKey && !openaiKey) {
@@ -156,7 +173,41 @@ app.post('/analyze-ai', async (req, res) => {
 					}
 				}
 
-				const resp = await axios.post(url, body, { timeout: 30000 })
+				// Retry logic for network issues
+				let resp
+				const maxRetries = 3
+				let lastError
+				
+				for (let attempt = 1; attempt <= maxRetries; attempt++) {
+					try {
+						console.log(`Gemini API attempt ${attempt}/${maxRetries}`)
+						resp = await axios.post(url, body, { 
+							timeout: 45000,
+							headers: {
+								'Content-Type': 'application/json',
+								'User-Agent': 'Autism-Assessment-Backend/1.0'
+							}
+						})
+						break // Success, exit retry loop
+					} catch (error) {
+						lastError = error
+						console.log(`Attempt ${attempt} failed:`, error.message)
+						
+						if (attempt < maxRetries && (
+							error.code === 'ECONNRESET' || 
+							error.code === 'ENOTFOUND' ||
+							error.code === 'ETIMEDOUT' ||
+							error.message.includes('socket disconnected') ||
+							error.message.includes('TLS')
+						)) {
+							console.log(`Retrying in ${attempt * 2} seconds...`)
+							await new Promise(resolve => setTimeout(resolve, attempt * 2000))
+							continue
+						} else {
+							throw error
+						}
+					}
+				}
 				// Extract content from Gemini v1 response format
 				let content = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text
 
@@ -185,7 +236,7 @@ app.post('/analyze-ai', async (req, res) => {
 
 				// Save complete analysis to Firebase automatically
 				try {
-					const record = {
+					const analysisRecord = {
 						id: `analysis_${Date.now()}`,
 						timestamp: new Date().toISOString(),
 						childData: {
@@ -194,21 +245,48 @@ app.post('/analyze-ai', async (req, res) => {
 							parentName: parentName || '',
 							phoneNumber: phoneNumber || '',
 							eyeContact,
-							speechLevel,
+							communication,
+							speechPatterns,
 							socialResponse,
-							sensoryReactions
+							sensoryReactions,
+							...(detectedEmotions && { detectedEmotions })
 						},
 						aiResponse: parsed,
 						aiProvider: 'gemini'
 					}
 
+					// Also save basic record for compatibility (like old records endpoint)
+					const basicRecord = {
+						id: `r_${Date.now()}`,
+						timestamp: new Date().toISOString(),
+						data: {
+							name: name || 'Unknown',
+							age,
+							parentName: parentName || '',
+							phoneNumber: phoneNumber || '',
+							gender: req.body.gender || '',
+							eyeContact,
+							communication,
+							speechPatterns,
+							socialResponse,
+							sensoryReactions,
+							...(detectedEmotions && { detectedEmotions })
+						}
+					}
+
 					console.log('Attempting to save analysis to Firebase...')
-					console.log('Record ID:', record.id)
+					console.log('Analysis Record ID:', analysisRecord.id)
+					console.log('Basic Record ID:', basicRecord.id)
 					console.log('Firestore available:', !!firestore)
 
 					if (firestore) {
-						await firestore.collection('analyses').doc(record.id).set(record)
-						console.log('✅ Analysis successfully saved to Firebase:', record.id)
+						// Save analysis to analyses collection
+						await firestore.collection('analyses').doc(analysisRecord.id).set(analysisRecord)
+						console.log('✅ Analysis successfully saved to Firebase:', analysisRecord.id)
+						
+						// Also save to records collection for compatibility
+						await firestore.collection('records').doc(basicRecord.id).set(basicRecord)
+						console.log('✅ Basic record successfully saved to Firebase:', basicRecord.id)
 					} else {
 						console.log('❌ Firestore not available - skipping save')
 					}
@@ -224,25 +302,50 @@ app.post('/analyze-ai', async (req, res) => {
 
 			// Else if OpenAI key is present, use OpenAI
 			if (openaiKey) {
-				const resp = await axios.post(
-					'https://api.openai.com/v1/chat/completions',
-					{
-						model: openaiModel,
-						messages: [
-							{ role: 'system', content: system },
-							{ role: 'user', content: user }
-						],
-						temperature: 0.2,
-						max_tokens: 500
-					},
-					{
-						headers: {
-							Authorization: `Bearer ${openaiKey}`,
-							'Content-Type': 'application/json'
-						},
-						timeout: 30000
+				// Retry logic for OpenAI API
+				let resp
+				const maxRetries = 3
+				
+				for (let attempt = 1; attempt <= maxRetries; attempt++) {
+					try {
+						console.log(`OpenAI API attempt ${attempt}/${maxRetries}`)
+						resp = await axios.post(
+							'https://api.openai.com/v1/chat/completions',
+							{
+								model: openaiModel,
+								messages: [
+									{ role: 'system', content: system },
+									{ role: 'user', content: user }
+								],
+								temperature: 0.2,
+								max_tokens: 500
+							},
+							{
+								headers: {
+									Authorization: `Bearer ${openaiKey}`,
+									'Content-Type': 'application/json',
+									'User-Agent': 'Autism-Assessment-Backend/1.0'
+								},
+								timeout: 45000
+							}
+						)
+						break // Success
+					} catch (error) {
+						console.log(`OpenAI attempt ${attempt} failed:`, error.message)
+						
+						if (attempt < maxRetries && (
+							error.code === 'ECONNRESET' || 
+							error.code === 'ETIMEDOUT' ||
+							error.message.includes('socket disconnected')
+						)) {
+							console.log(`Retrying in ${attempt * 2} seconds...`)
+							await new Promise(resolve => setTimeout(resolve, attempt * 2000))
+							continue
+						} else {
+							throw error
+						}
 					}
-				)
+				}
 
 				const content = resp.data && resp.data.choices && resp.data.choices[0] && resp.data.choices[0].message && resp.data.choices[0].message.content
 				if (!content) return res.status(502).json({ error: 'Empty response from OpenAI provider', raw: resp.data })
@@ -256,7 +359,7 @@ app.post('/analyze-ai', async (req, res) => {
 
 				// Save complete analysis to Firebase automatically
 				try {
-					const record = {
+					const analysisRecord = {
 						id: `analysis_${Date.now()}`,
 						timestamp: new Date().toISOString(),
 						childData: {
@@ -265,20 +368,47 @@ app.post('/analyze-ai', async (req, res) => {
 							parentName: parentName || '',
 							phoneNumber: phoneNumber || '',
 							eyeContact,
-							speechLevel,
+							communication,
+							speechPatterns,
 							socialResponse,
-							sensoryReactions
+							sensoryReactions,
+							...(detectedEmotions && { detectedEmotions })
 						},
 						aiResponse: parsed,
 						aiProvider: 'openai'
 					}
 
+					// Also save basic record for compatibility
+					const basicRecord = {
+						id: `r_${Date.now() + 1}`, // +1 to avoid duplicate IDs
+						timestamp: new Date().toISOString(),
+						data: {
+							name: name || 'Unknown',
+							age,
+							parentName: parentName || '',
+							phoneNumber: phoneNumber || '',
+							gender: req.body.gender || '',
+							eyeContact,
+							communication,
+							speechPatterns,
+							socialResponse,
+							sensoryReactions,
+							...(detectedEmotions && { detectedEmotions })
+						}
+					}
+
 					console.log('Attempting to save OpenAI analysis to Firebase...')
-					console.log('Record ID:', record.id)
+					console.log('Analysis Record ID:', analysisRecord.id)
+					console.log('Basic Record ID:', basicRecord.id)
 
 					if (firestore) {
-						await firestore.collection('analyses').doc(record.id).set(record)
-						console.log('✅ OpenAI Analysis successfully saved to Firebase:', record.id)
+						// Save analysis to analyses collection
+						await firestore.collection('analyses').doc(analysisRecord.id).set(analysisRecord)
+						console.log('✅ OpenAI Analysis successfully saved to Firebase:', analysisRecord.id)
+						
+						// Also save to records collection for compatibility
+						await firestore.collection('records').doc(basicRecord.id).set(basicRecord)
+						console.log('✅ OpenAI Basic record successfully saved to Firebase:', basicRecord.id)
 					} else {
 						console.log('❌ Firestore not available - skipping OpenAI save')
 					}
