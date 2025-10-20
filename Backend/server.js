@@ -31,26 +31,35 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
+    console.log('CORS check for origin:', origin)
+    
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true)
+    if (!origin) {
+      console.log('No origin - allowing')
+      return callback(null, true)
+    }
     
     // Check if the origin is in our allowed list
-    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes(undefined)) {
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      console.log('Origin in allowedOrigins - allowing')
       return callback(null, true)
     }
     
     // For development, allow any localhost
     if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      console.log('Localhost origin - allowing')
       return callback(null, true)
     }
     
     // Allow any Vercel deployment
     if (origin.includes('vercel.app')) {
+      console.log('Vercel origin - allowing')
       return callback(null, true)
     }
     
     // Allow other common deployment platforms
     if (origin.includes('netlify.app') || origin.includes('github.io') || origin.includes('surge.sh')) {
+      console.log('Deployment platform origin - allowing')
       return callback(null, true)
     }
     
@@ -58,7 +67,7 @@ app.use(cors({
     return callback(new Error('Not allowed by CORS'), false)
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   credentials: true
 }))
 
