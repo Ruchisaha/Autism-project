@@ -79,11 +79,12 @@ app.options('*', (req, res) => {
     origin.includes('surge.sh')
   
   if (isAllowed) {
-    res.header('Access-Control-Allow-Origin', origin || '*')
+    res.header('Access-Control-Allow-Origin', origin)
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
     res.header('Access-Control-Allow-Credentials', 'true')
     res.header('Access-Control-Max-Age', '86400') // Cache preflight for 24 hours
+    console.log('CORS allowed for origin:', origin)
     return res.sendStatus(200)
   }
   
