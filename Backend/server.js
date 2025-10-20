@@ -17,89 +17,33 @@ console.log('Backend starting, AI provider:', detectProvider())
 
 const app = express()
 
-// Enhanced CORS configuration
-const allowedOrigins = [
-  'http://localhost:5173', 
-  'http://localhost:5174', 
-  'http://localhost:3000',
-  'https://healthcare-4yue.onrender.com',
-  'https://autism-project-8u6q.vercel.app', // Your old Vercel deployment
-  'https://autism-project-99cu.vercel.app', // Your new Vercel deployment
-  // Add your frontend deployment URL here when you deploy it
-  process.env.FRONTEND_URL, // You can set this in your deployment environment
-]
-
+// Simple and reliable CORS configuration
 app.use(cors({
-  origin: function (origin, callback) {
-    console.log('CORS check for origin:', origin)
-    
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
-      console.log('No origin - allowing')
-      return callback(null, true)
-    }
-    
-    // Check if the origin is in our allowed list
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      console.log('Origin in allowedOrigins - allowing')
-      return callback(null, true)
-    }
-    
-    // For development, allow any localhost
-    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-      console.log('Localhost origin - allowing')
-      return callback(null, true)
-    }
-    
-    // Allow any Vercel deployment
-    if (origin.includes('vercel.app')) {
-      console.log('Vercel origin - allowing')
-      return callback(null, true)
-    }
-    
-    // Allow other common deployment platforms
-    if (origin.includes('netlify.app') || origin.includes('github.io') || origin.includes('surge.sh')) {
-      console.log('Deployment platform origin - allowing')
-      return callback(null, true)
-    }
-    
-    console.log('CORS blocked origin:', origin)
-    return callback(new Error('Not allowed by CORS'), false)
-  },
+  origin: true, // Allow all origins for now
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   credentials: true
 }))
 
-app.use(express.json())
-
-// Handle preflight OPTIONS requests for all routes
-app.options('*', (req, res) => {
+// Additional CORS middleware to ensure headers are set
+app.use((req, res, next) => {
   const origin = req.headers.origin
-  
-  // Check if origin is allowed
-  const isAllowed = !origin || 
-    allowedOrigins.includes(origin) ||
-    origin.includes('localhost') ||
-    origin.includes('127.0.0.1') ||
-    origin.includes('vercel.app') ||
-    origin.includes('netlify.app') ||
-    origin.includes('github.io') ||
-    origin.includes('surge.sh')
-  
-  if (isAllowed) {
+  if (origin) {
     res.header('Access-Control-Allow-Origin', origin)
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
-    res.header('Access-Control-Allow-Credentials', 'true')
-    res.header('Access-Control-Max-Age', '86400') // Cache preflight for 24 hours
-    console.log('CORS allowed for origin:', origin)
+  }
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
+  res.header('Access-Control-Allow-Credentials', 'true')
+  
+  if (req.method === 'OPTIONS') {
+    console.log('OPTIONS request from:', origin)
     return res.sendStatus(200)
   }
   
-  console.log('CORS blocked OPTIONS request from:', origin)
-  res.sendStatus(403)
+  next()
 })
+
+app.use(express.json())
 
 // Root route
 app.get('/', (req, res) => {
