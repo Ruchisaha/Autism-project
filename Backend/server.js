@@ -23,7 +23,8 @@ const allowedOrigins = [
   'http://localhost:5174', 
   'http://localhost:3000',
   'https://healthcare-4yue.onrender.com',
-  'https://autism-project-8u6q.vercel.app', // Your Vercel deployment
+  'https://autism-project-8u6q.vercel.app', // Your old Vercel deployment
+  'https://autism-project-99cu.vercel.app', // Your new Vercel deployment
   // Add your frontend deployment URL here when you deploy it
   process.env.FRONTEND_URL, // You can set this in your deployment environment
 ]
