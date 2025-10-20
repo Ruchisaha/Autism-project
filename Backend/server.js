@@ -23,6 +23,7 @@ const allowedOrigins = [
   'http://localhost:5174', 
   'http://localhost:3000',
   'https://healthcare-4yue.onrender.com',
+  'https://autism-project-8u6q.vercel.app', // Your Vercel deployment
   // Add your frontend deployment URL here when you deploy it
   process.env.FRONTEND_URL, // You can set this in your deployment environment
 ]
@@ -42,6 +43,16 @@ app.use(cors({
       return callback(null, true)
     }
     
+    // Allow any Vercel deployment
+    if (origin.includes('vercel.app')) {
+      return callback(null, true)
+    }
+    
+    // Allow other common deployment platforms
+    if (origin.includes('netlify.app') || origin.includes('github.io') || origin.includes('surge.sh')) {
+      return callback(null, true)
+    }
+    
     console.log('CORS blocked origin:', origin)
     return callback(new Error('Not allowed by CORS'), false)
   },
@@ -54,11 +65,29 @@ app.use(express.json())
 
 // Handle preflight OPTIONS requests for all routes
 app.options('*', (req, res) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin)
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
-  res.header('Access-Control-Allow-Credentials', 'true')
-  res.sendStatus(200)
+  const origin = req.headers.origin
+  
+  // Check if origin is allowed
+  const isAllowed = !origin || 
+    allowedOrigins.includes(origin) ||
+    origin.includes('localhost') ||
+    origin.includes('127.0.0.1') ||
+    origin.includes('vercel.app') ||
+    origin.includes('netlify.app') ||
+    origin.includes('github.io') ||
+    origin.includes('surge.sh')
+  
+  if (isAllowed) {
+    res.header('Access-Control-Allow-Origin', origin || '*')
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
+    res.header('Access-Control-Allow-Credentials', 'true')
+    res.header('Access-Control-Max-Age', '86400') // Cache preflight for 24 hours
+    return res.sendStatus(200)
+  }
+  
+  console.log('CORS blocked OPTIONS request from:', origin)
+  res.sendStatus(403)
 })
 
 // Root route
