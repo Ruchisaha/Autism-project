@@ -11,7 +11,7 @@ export function Header() {
         🧠 NeuroTrack
       </h1>
       <div className="w-20 h-1 bg-gradient-to-r from-violet-500 to-indigo-500 mx-auto rounded-full mb-4"></div>
-      <p className="text-gray-700 text-xl font-medium">Provide your child's details to receive AI-based therapy suggestions</p>
+      <p className="text-gray-700 text-xl font-medium">Provide your child's details to receive AI-based  Autism therapy suggestions</p>
     </div>
   )
 }
